@@ -194,6 +194,10 @@ def checksig_real(sig, pubkey, all_check_sigs):
     except Exception: return ('real', False)
     return ('real', ecdsa_verify(pt, z, r, s))
 
+# round 1 must end in CHECKMULTISIGVERIFY: only the top stack item is checked at
+# script end, so a plain CHECKMULTISIG there is buried under round 2 and never enforced
+assert [v for k,v in toks(lock) if k=='o' and v in (0xae,0xaf)] == [0xaf,0xae]
+
 st = [v for k,v in toks(witness)]
 hors=0; cms=0; real_sig=0; relaxed=0; fail=None
 for k,v in toks(lock):
@@ -219,7 +223,7 @@ for k,v in toks(lock):
             if kind=='real': real_sig+=1
             else: relaxed+=1
             if not ok and fail is None: fail=('CHECKSIG',sig.hex()[:16],pub.hex()[:12])
-        elif op==0xae:                                   # OP_CHECKMULTISIG (REAL, ordered)
+        elif op in (0xae,0xaf):                          # OP_CHECKMULTISIG[VERIFY] (REAL, ordered)
             nk=di(st.pop()); pubs=[st.pop() for _ in range(nk)][::-1]
             ns=di(st.pop()); sigs=[st.pop() for _ in range(ns)][::-1]
             st.pop()                                      # the OP_0 dummy
@@ -236,6 +240,7 @@ for k,v in toks(lock):
             good = (matched==ns)
             st.append(b'\x01' if good else b''); cms+=1
             if not good and fail is None: fail=('CMS', f'{matched}/{ns}', '')
+            if op==0xaf: st.pop()                         # VERIFY leaves nothing
     except Exception as e:
         fail=('crash',str(e),''); break
 
