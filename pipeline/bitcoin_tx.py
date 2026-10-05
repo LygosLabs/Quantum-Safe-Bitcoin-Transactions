@@ -252,8 +252,9 @@ def _encode_9byte_sig(r, s, sighash=0x03):
 # above the dummy block but forgot the OP_0 CHECKMULTISIG dummy, and used a
 # fixed commitment gap n+1 that must actually shrink to n+1-i per iteration).
 # Threading this model through the whole script makes every position correct
-# by construction and prevents cross-round drift (round 2 sits one item higher
-# than round 1 because round 1 leaves a CHECKMULTISIG result on the stack).
+# by construction and prevents cross-round drift (round 2's depths depend on
+# what round 1 leaves on the stack; round 1 ends in CHECKMULTISIGVERIFY and
+# leaves no result).
 # ============================================================
 
 class _StackModel:
@@ -453,7 +454,7 @@ class QSBScriptBuilder:
         key_nonce (the pinning witness) and leaves nothing."""
         m.pop(2)
 
-    def _emit_round(self, m, round_idx, sig_nonce_bytes, subset, terminal=True):
+    def _emit_round(self, m, round_idx, sig_nonce_bytes, subset, terminal):
         """Emit one round's script bytes, computing every OP_ROLL position from
         the live stack model `m` (which must already hold this round's witness
         block and everything below it). Returns (script_bytes, idxvals) where
@@ -547,7 +548,8 @@ class QSBScriptBuilder:
         self._model_pinning(m)
         s0, _ = self._emit_round(m, 0, round1_sig, self._canonical_subset(0),
                                  terminal=False)
-        s1, _ = self._emit_round(m, 1, round2_sig, self._canonical_subset(1))
+        s1, _ = self._emit_round(m, 1, round2_sig, self._canonical_subset(1),
+                                 terminal=True)
         return bytes(script) + s0 + s1
 
     def compute_witness_indices(self, subsets):
@@ -561,7 +563,8 @@ class QSBScriptBuilder:
         self._model_pinning(m)
         _, iv0 = self._emit_round(m, 0, b'\x30\x06\x02\x01\x01\x02\x01\x01\x01', subsets[0],
                                   terminal=False)
-        _, iv1 = self._emit_round(m, 1, b'\x30\x06\x02\x01\x01\x02\x01\x01\x01', subsets[1])
+        _, iv1 = self._emit_round(m, 1, b'\x30\x06\x02\x01\x01\x02\x01\x01\x01', subsets[1],
+                                  terminal=True)
         return {0: iv0, 1: iv1}
 
     @staticmethod

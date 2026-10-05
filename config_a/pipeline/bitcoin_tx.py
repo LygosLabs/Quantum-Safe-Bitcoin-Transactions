@@ -341,9 +341,10 @@ def _encode_9byte_sig(r, s, sighash=0x03):
 # instead of hand-derived formulas. The original build_round_script formulas
 # were off by one (they omitted the OP_0 CHECKMULTISIG dummy and used a fixed
 # commitment gap n+1 that must actually shrink to n+1-i per iteration) and did
-# not account for cross-round drift (round 2 sits one item higher than round 1
-# because round 1 leaves a CHECKMULTISIG result on the stack). Threading this
-# model through the whole script makes every position correct by construction.
+# not account for cross-round drift (round 2's depths depend on what round 1
+# leaves on the stack; round 1 ends in CHECKMULTISIGVERIFY and leaves no result).
+# Threading this model through the whole script makes every position correct by
+# construction.
 # ============================================================
 
 class _StackModel:
@@ -543,7 +544,7 @@ class QSBScriptBuilder:
         key_nonce (the pinning witness) and leaves nothing."""
         m.pop(2)
 
-    def _emit_round(self, m, round_idx, sig_nonce_bytes, subset, terminal=True):
+    def _emit_round(self, m, round_idx, sig_nonce_bytes, subset, terminal):
         """Emit one round's script bytes for a SINGLE-HASH puzzle (ripemd160 or
         sha256), computing every OP_ROLL position from the live stack model `m`
         (which must already hold this round's witness block and everything below
@@ -772,8 +773,8 @@ class QSBScriptBuilder:
     
     def build_full_script(self, pin_sig, round1_sig, round2_sig):
         """Build the complete locking script. Single-hash modes thread a shared
-        stack model so round 2's OP_ROLL positions account for round 1's leftover
-        CHECKMULTISIG result (the cross-round drift the legacy path missed)."""
+        stack model so round 2's OP_ROLL positions account for what round 1 leaves
+        on the stack (the cross-round drift the legacy path missed)."""
         if self.hash_mode in ('ripemd160', 'sha256'):
             m = _StackModel()
             # full witness (bottom..top): round-2 block, round-1 block, pin kp, kn
